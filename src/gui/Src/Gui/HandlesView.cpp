@@ -30,6 +30,7 @@ HandlesView::HandlesView(QWidget* parent) : QWidget(parent)
     mHandlesTable->mSearchList->addColumnAt(8 + sizeof(duint) * 2 * wCharWidth, tr("Handle"), false);
     mHandlesTable->mSearchList->addColumnAt(8 + 16 * wCharWidth, tr("Access"), false);
     mHandlesTable->mSearchList->addColumnAt(8 + wCharWidth * 20, tr("Name"), false);
+    mHandlesTable->mSearchList->loadColumnFromConfig("Handle");
 
     mWindowsTable = new SearchListView(true, this, true);
     mWindowsTable->mList->setWindowTitle("Windows");
@@ -58,6 +59,7 @@ HandlesView::HandlesView(QWidget* parent) : QWidget(parent)
     mWindowsTable->mSearchList->addColumnAt(8 + 8 * wCharWidth, tr("Parent"), false);
     mWindowsTable->mSearchList->addColumnAt(8 + 20 * wCharWidth, tr("Size"), false);
     mWindowsTable->mSearchList->addColumnAt(8 + 6 * wCharWidth, tr("Enable"), false);
+    mWindowsTable->mSearchList->loadColumnFromConfig("Window");
 
     mTcpConnectionsTable = new SearchListView(true, this, true);
     mTcpConnectionsTable->setWindowTitle("TcpConnections");
@@ -72,6 +74,7 @@ HandlesView::HandlesView(QWidget* parent) : QWidget(parent)
     mTcpConnectionsTable->mSearchList->addColumnAt(8 + 64 * wCharWidth, tr("Remote address"), false);
     mTcpConnectionsTable->mSearchList->addColumnAt(8 + 64 * wCharWidth, tr("Local address"), false);
     mTcpConnectionsTable->mSearchList->addColumnAt(8 + 8 * wCharWidth, tr("State"), false);
+    mTcpConnectionsTable->mSearchList->loadColumnFromConfig("TcpConnection");
     /*
         mHeapsTable = new ReferenceView(this);
         mHeapsTable->setWindowTitle("Heaps");
@@ -166,6 +169,7 @@ void HandlesView::reloadData()
         mWindowsTable->mList->reloadData();
         mTcpConnectionsTable->mList->setRowCount(0);
         mTcpConnectionsTable->mList->reloadData();
+
         //mHeapsTable->setRowCount(0);
         //mHeapsTable->reloadData();
         mPrivilegesTable->setRowCount(0);
@@ -298,13 +302,13 @@ void HandlesView::privilegesTableContextMenuSlot(const QPoint & pos)
 
 void HandlesView::closeHandleSlot()
 {
-    DbgCmdExec(QString("handleclose %1").arg(mHandlesTable->mCurList->getCellContent(mHandlesTable->mCurList->getInitialSelection(), 2)).toUtf8().constData());
+    DbgCmdExecDirect(QString("handleclose %1").arg(mHandlesTable->mCurList->getCellContent(mHandlesTable->mCurList->getInitialSelection(), 2)).toUtf8().constData());
     enumHandles();
 }
 
 void HandlesView::enablePrivilegeSlot()
 {
-    DbgCmdExec(QString("EnablePrivilege \"%1\"").arg(mPrivilegesTable->getCellContent(mPrivilegesTable->getInitialSelection(), 0)).toUtf8().constData());
+    DbgCmdExecDirect(QString("EnablePrivilege \"%1\"").arg(mPrivilegesTable->getCellContent(mPrivilegesTable->getInitialSelection(), 0)).toUtf8().constData());
     enumPrivileges();
 }
 
@@ -312,7 +316,7 @@ void HandlesView::disablePrivilegeSlot()
 {
     if(!DbgIsDebugging())
         return;
-    DbgCmdExec(QString("DisablePrivilege \"%1\"").arg(mPrivilegesTable->getCellContent(mPrivilegesTable->getInitialSelection(), 0)).toUtf8().constData());
+    DbgCmdExecDirect(QString("DisablePrivilege \"%1\"").arg(mPrivilegesTable->getCellContent(mPrivilegesTable->getInitialSelection(), 0)).toUtf8().constData());
     enumPrivileges();
 }
 
@@ -322,7 +326,7 @@ void HandlesView::enableAllPrivilegesSlot()
         return;
     for(int i = 0; i < mPrivilegesTable->getRowCount(); i++)
         if(mPrivilegesTable->getCellContent(i, 1) != tr("Unknown"))
-            DbgCmdExec(QString("EnablePrivilege \"%1\"").arg(mPrivilegesTable->getCellContent(i, 0)).toUtf8().constData());
+            DbgCmdExecDirect(QString("EnablePrivilege \"%1\"").arg(mPrivilegesTable->getCellContent(i, 0)).toUtf8().constData());
     enumPrivileges();
 }
 
@@ -332,19 +336,19 @@ void HandlesView::disableAllPrivilegesSlot()
         return;
     for(int i = 0; i < mPrivilegesTable->getRowCount(); i++)
         if(mPrivilegesTable->getCellContent(i, 1) != tr("Unknown"))
-            DbgCmdExec(QString("DisablePrivilege \"%1\"").arg(mPrivilegesTable->getCellContent(i, 0)).toUtf8().constData());
+            DbgCmdExecDirect(QString("DisablePrivilege \"%1\"").arg(mPrivilegesTable->getCellContent(i, 0)).toUtf8().constData());
     enumPrivileges();
 }
 
 void HandlesView::enableWindowSlot()
 {
-    DbgCmdExec(QString("EnableWindow %1").arg(mWindowsTable->mCurList->getCellContent(mWindowsTable->mCurList->getInitialSelection(), 1)).toUtf8().constData());
+    DbgCmdExecDirect(QString("EnableWindow %1").arg(mWindowsTable->mCurList->getCellContent(mWindowsTable->mCurList->getInitialSelection(), 1)).toUtf8().constData());
     enumWindows();
 }
 
 void HandlesView::disableWindowSlot()
 {
-    DbgCmdExec(QString("DisableWindow %1").arg(mWindowsTable->mCurList->getCellContent(mWindowsTable->mCurList->getInitialSelection(), 1)).toUtf8().constData());
+    DbgCmdExecDirect(QString("DisableWindow %1").arg(mWindowsTable->mCurList->getCellContent(mWindowsTable->mCurList->getInitialSelection(), 1)).toUtf8().constData());
     enumWindows();
 }
 
@@ -420,6 +424,8 @@ void HandlesView::enumHandles()
     else
         mHandlesTable->mList->setRowCount(0);
     mHandlesTable->mList->reloadData();
+    // refresh values also when in mSearchList
+    mHandlesTable->refreshSearchList();
 }
 //Enumerate windows and update windows table
 void HandlesView::enumWindows()
@@ -457,6 +463,8 @@ void HandlesView::enumWindows()
     else
         mWindowsTable->mList->setRowCount(0);
     mWindowsTable->mList->reloadData();
+    // refresh values also when in mSearchList
+    mWindowsTable->refreshSearchList();
 }
 
 //Enumerate privileges and update privileges table
@@ -540,6 +548,8 @@ void HandlesView::enumTcpConnections()
     else
         mTcpConnectionsTable->mList->setRowCount(0);
     mTcpConnectionsTable->mList->reloadData();
+    // refresh values also when in mSearchList
+    mTcpConnectionsTable->refreshSearchList();
 }
 /*
 //Enumerate Heaps and update Heaps table

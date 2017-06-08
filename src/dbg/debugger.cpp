@@ -272,6 +272,7 @@ bool bNoWow64SingleStepWorkaround = false;
 duint DbgEvents = 0;
 duint maxSkipExceptionCount = 10000;
 HANDLE mProcHandle;
+HANDLE mForegroundHandle;
 
 static duint dbgcleartracestate()
 {
@@ -2148,6 +2149,12 @@ cmdline_qoutes_placement_t getqoutesplacement(const char* cmdline)
     return quotesPos;
 }
 
+BOOL ismainwindow(HWND handle)
+{
+    // using only OWNER condition allows getting titles of hidden "main windows"
+    return !GetWindow(handle, GW_OWNER) && IsWindowVisible(handle);
+}
+
 BOOL CALLBACK chkWindowPidCallback(HWND hWnd, LPARAM lParam)
 {
     DWORD procId = (DWORD)lParam;
@@ -2155,8 +2162,14 @@ BOOL CALLBACK chkWindowPidCallback(HWND hWnd, LPARAM lParam)
     GetWindowThreadProcessId(hWnd, &hwndPid);
     if(hwndPid == procId)
     {
-        mProcHandle = hWnd;
-        return FALSE;
+        if(!mForegroundHandle)  // get the foreground if no owner visible
+            mForegroundHandle = hWnd;
+
+        if(ismainwindow(hWnd))
+        {
+            mProcHandle = hWnd;
+            return FALSE;
+        }
     }
 
     return TRUE;
@@ -2165,26 +2178,38 @@ BOOL CALLBACK chkWindowPidCallback(HWND hWnd, LPARAM lParam)
 bool dbggetwintext(std::vector<std::string>* winTextList, const DWORD dwProcessId)
 {
     mProcHandle = NULL;
+    mForegroundHandle = NULL;
+
     EnumWindows(chkWindowPidCallback, dwProcessId);
-    if(mProcHandle)
+    if(!mProcHandle && !mForegroundHandle)
+        return false;
+
+    wchar_t limitedbuffer[256];
+    limitedbuffer[255] = 0;
+
+    if(mProcHandle)  // get info from the "main window" (GW_OWNER + visible)
     {
-        wchar_t limitedbuffer[256];
-        limitedbuffer[255] = 0;
-        GetWindowTextW((HWND)mProcHandle, limitedbuffer, 256);
-        if(limitedbuffer[255] != 0)  //Window title too long. Add "..." to the end of buffer.
-        {
-            if(limitedbuffer[252] < 0xDC00 || limitedbuffer[252] > 0xDFFF)  //protect the last surrogate of UTF-16 surrogate pair
-                limitedbuffer[252] = L'.';
-            limitedbuffer[253] = L'.';
-            limitedbuffer[254] = L'.';
-            limitedbuffer[255] = 0;
-        }
-        auto UTF8WindowTitle = StringUtils::Utf16ToUtf8(limitedbuffer);
-        winTextList->push_back(UTF8WindowTitle);
-        return true;
+        if(!GetWindowTextW((HWND)mProcHandle, limitedbuffer, 256))
+            GetClassNameW((HWND)mProcHandle, limitedbuffer, 256); // go for the class name if none of the above
+    }
+    else if(mForegroundHandle)  // get info from the foreground window
+    {
+        if(!GetWindowTextW((HWND)mForegroundHandle, limitedbuffer, 256))
+            GetClassNameW((HWND)mForegroundHandle, limitedbuffer, 256); // go for the class name if none of the above
     }
 
-    return false;
+
+    if(limitedbuffer[255] != 0)  //Window title too long. Add "..." to the end of buffer.
+    {
+        if(limitedbuffer[252] < 0xDC00 || limitedbuffer[252] > 0xDFFF)  //protect the last surrogate of UTF-16 surrogate pair
+            limitedbuffer[252] = L'.';
+        limitedbuffer[253] = L'.';
+        limitedbuffer[254] = L'.';
+        limitedbuffer[255] = 0;
+    }
+    auto UTF8WindowTitle = StringUtils::Utf16ToUtf8(limitedbuffer);
+    winTextList->push_back(UTF8WindowTitle);
+    return true;
 }
 
 bool dbglistprocesses(std::vector<PROCESSENTRY32>* infoList, std::vector<std::string>* commandList, std::vector<std::string>* winTextList)
@@ -2844,6 +2869,7 @@ static void debugLoopFunction(void* lpParameter, bool attach)
     pDebuggedBase = 0;
     pCreateProcessBase = 0;
     isDetachedByUser = false;
+    hActiveThread = nullptr;
     if(!gDllLoader.empty()) //Delete the DLL loader (#1496)
     {
         DeleteFileW(gDllLoader.c_str());
